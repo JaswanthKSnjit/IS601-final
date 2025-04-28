@@ -113,8 +113,17 @@ class UserService:
         return True
 
     @classmethod
-    async def list_users(cls, session: AsyncSession, skip: int = 0, limit: int = 10) -> List[User]:
-        query = select(User).offset(skip).limit(limit)
+    async def list_users(cls, session: AsyncSession, skip: int = 0, limit: int = 10, email: Optional[str] = None, username: Optional[str] = None) -> List[User]:
+        query = select(User)
+
+        if email:
+            query = query.where(User.email.ilike(f"%{email}%"))
+
+        if username:
+            query = query.where(User.nickname.ilike(f"%{username}%"))
+
+        query = query.offset(skip).limit(limit)
+    
         result = await cls._execute_query(session, query)
         return result.scalars().all() if result else []
 

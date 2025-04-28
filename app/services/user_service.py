@@ -122,6 +122,9 @@ class UserService:
         if username:
             query = query.where(User.nickname.ilike(f"%{username}%"))
 
+        if role:
+            query = query.where(User.role == role)
+
         query = query.offset(skip).limit(limit)
     
         result = await cls._execute_query(session, query)

@@ -21,6 +21,7 @@ Key Highlights:
 from builtins import dict, int, len, str
 from datetime import timedelta
 from uuid import UUID
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -170,11 +171,13 @@ async def list_users(
     request: Request,
     skip: int = 0,
     limit: int = 10,
+    email: Optional[str] = None,
+    username: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))
 ):
     total_users = await UserService.count(db)
-    users = await UserService.list_users(db, skip, limit)
+    users = await UserService.list_users(db, skip, limit, email, username)
 
     user_responses = [
         UserResponse.model_validate(user) for user in users

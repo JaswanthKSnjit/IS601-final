@@ -190,3 +190,22 @@ async def test_list_users_unauthorized(async_client, user_token):
         headers={"Authorization": f"Bearer {user_token}"}
     )
     assert response.status_code == 403  # Forbidden, as expected for regular user
+
+@pytest.mark.asyncio
+async def test_search_users_by_email(async_client, admin_token):
+    response = await async_client.get(
+        "/users/?email=test",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert response.status_code == 200
+    assert 'items' in response.json()
+
+@pytest.mark.asyncio
+async def test_search_users_by_username(async_client, admin_token):
+    response = await async_client.get(
+        "/users/?username=testuser",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert response.status_code == 200
+    assert 'items' in response.json()
+

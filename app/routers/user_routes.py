@@ -173,6 +173,7 @@ async def list_users(
     limit: int = 10,
     email: Optional[str] = None,
     username: Optional[str] = None,
+    role: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))
 ):

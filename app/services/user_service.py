@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import secrets
 from typing import Optional, Dict, List
 from pydantic import ValidationError
-from sqlalchemy import func, null, update, select
+from sqlalchemy import func, null, update, select, cast, String
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_email_service, get_settings
@@ -71,7 +71,7 @@ class UserService:
 
             else:
                 new_user.verification_token = generate_verification_token()
-                await email_service.send_verification_email(new_user)
+                #await email_service.send_verification_email(new_user)
 
             session.add(new_user)
             await session.commit()
@@ -113,7 +113,7 @@ class UserService:
         return True
 
     @classmethod
-    async def list_users(cls, session: AsyncSession, skip: int = 0, limit: int = 10, email: Optional[str] = None, username: Optional[str] = None) -> List[User]:
+    async def list_users(cls, session: AsyncSession, skip: int = 0, limit: int = 10, email: Optional[str] = None, username: Optional[str] = None, role: Optional[str] = None) -> List[User]:
         query = select(User)
 
         if email:
@@ -123,7 +123,7 @@ class UserService:
             query = query.where(User.nickname.ilike(f"%{username}%"))
 
         if role:
-            query = query.where(User.role == role)
+            query = query.where(cast(User.role, String).ilike(f"%{role}%"))
 
         query = query.offset(skip).limit(limit)
     

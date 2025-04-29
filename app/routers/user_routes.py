@@ -21,7 +21,6 @@ Key Highlights:
 from builtins import dict, int, len, str
 from datetime import timedelta
 from uuid import UUID
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,6 +88,8 @@ async def update_user(user_id: UUID, user_update: UserUpdate, request: Request, 
     """
     user_data = user_update.model_dump(exclude_unset=True)
     updated_user = await UserService.update(db, user_id, user_data)
+    if updated_user =="EMAIL_ALREADY_REGISTERED":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email address already taken")
     if not updated_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -171,14 +172,11 @@ async def list_users(
     request: Request,
     skip: int = 0,
     limit: int = 10,
-    email: Optional[str] = None,
-    username: Optional[str] = None,
-    role: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))
 ):
     total_users = await UserService.count(db)
-    users = await UserService.list_users(db, skip, limit, email, username)
+    users = await UserService.list_users(db, skip, limit)
 
     user_responses = [
         UserResponse.model_validate(user) for user in users

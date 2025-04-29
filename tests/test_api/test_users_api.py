@@ -239,3 +239,13 @@ async def test_register_user_without_nickname(async_client):
     response = await async_client.post("/register/", json=user_data)
     assert response.status_code == 200
     assert response.json()["nickname"] is not None
+
+@pytest.mark.asyncio
+async def test_admin_registration_requires_email_verification(async_client):
+    response = await async_client.post("/register/", json={
+        "email": "newadmin@example.com",
+        "password": "StrongPass123!"
+    })
+    assert response.status_code == 200
+    user_data = response.json()
+    assert user_data.get("email_verified") is False or None

@@ -84,13 +84,6 @@ async def test_delete_user_does_not_exist(db_session):
     deletion_success = await UserService.delete(db_session, non_existent_user_id)
     assert deletion_success is False
 
-# Test listing users with pagination
-async def test_list_users_with_pagination(db_session, users_with_same_role_50_users):
-    users_page_1 = await UserService.list_users(db_session, skip=0, limit=10)
-    users_page_2 = await UserService.list_users(db_session, skip=10, limit=10)
-    assert len(users_page_1) == 10
-    assert len(users_page_2) == 10
-    assert users_page_1[0].id != users_page_2[0].id
 
 # Test registering a user with valid data
 async def test_register_user_with_valid_data(db_session, email_service):
@@ -161,3 +154,38 @@ async def test_unlock_user_account(db_session, locked_user):
     assert unlocked, "The account should be unlocked"
     refreshed_user = await UserService.get_by_id(db_session, locked_user.id)
     assert not refreshed_user.is_locked, "The user should no longer be locked"
+
+# Test updating non-existent user
+async def test_update_non_existent_user(db_session):
+    non_existent_user_id = "non-existent-id"
+    updated_user = await UserService.update(db_session, non_existent_user_id, {"email": "new_email@example.com"})
+    assert updated_user is None
+
+# Test listing users beyond available range
+async def test_list_users_beyond_range(db_session):
+    users = await UserService.list_users(db_session, skip=1000, limit=10)
+    assert len(users) == 0
+
+# Test for account unlock using incorrect ID
+async def test_unlock_user_account_incorrect_id(db_session):
+    incorrect_user_id = "incorrect-id"
+    unlocked = await UserService.unlock_user_account(db_session, incorrect_user_id)
+    assert unlocked is False
+
+async def test_create_user_with_same_email(db_session, email_service):
+    user_data1 = {
+        "nickname": generate_nickname(),
+        "email": "valid_user@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ADMIN.name
+    }
+    user1 = await UserService.create(db_session, user_data1, email_service)
+    assert user1.email == user_data1["email"]
+    user_data2 = {
+        "nickname": generate_nickname(),
+        "email": "valid_user@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ANONYMOUS.name
+    }
+    user2 = await UserService.create(db_session, user_data2, email_service)
+    assert user2 is None

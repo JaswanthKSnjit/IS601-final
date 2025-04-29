@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import secrets
 from typing import Optional, Dict, List
 from pydantic import ValidationError
-from sqlalchemy import func, null, update, select, cast, String
+from sqlalchemy import func, null, update, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_email_service, get_settings
@@ -71,10 +71,12 @@ class UserService:
 
             else:
                 new_user.verification_token = generate_verification_token()
-                #await email_service.send_verification_email(new_user)
+                await email_service.send_verification_email(new_user)
 
             session.add(new_user)
             await session.commit()
+            if new_user.role != UserRole.ADMIN:
+                await email_service.send_verification_email(new_user)
             return new_user
         except ValidationError as e:
             logger.error(f"Validation error during user creation: {e}")
@@ -85,7 +87,11 @@ class UserService:
         try:
             # validated_data = UserUpdate(**update_data).dict(exclude_unset=True)
             validated_data = UserUpdate(**update_data).model_dump(exclude_unset=True)
-
+            if "email" in validated_data.keys():
+                existing_user = await cls.get_by_email(session, validated_data['email'])
+                if existing_user and existing_user.id!=user_id:
+                    logger.error("User with given email already exists.")
+                    return "EMAIL_ALREADY_REGISTERED"
             if 'password' in validated_data:
                 validated_data['hashed_password'] = hash_password(validated_data.pop('password'))
             query = update(User).where(User.id == user_id).values(**validated_data).execution_options(synchronize_session="fetch")
@@ -113,20 +119,8 @@ class UserService:
         return True
 
     @classmethod
-    async def list_users(cls, session: AsyncSession, skip: int = 0, limit: int = 10, email: Optional[str] = None, username: Optional[str] = None, role: Optional[str] = None) -> List[User]:
-        query = select(User)
-
-        if email:
-            query = query.where(User.email.ilike(f"%{email}%"))
-
-        if username:
-            query = query.where(User.nickname.ilike(f"%{username}%"))
-
-        if role:
-            query = query.where(cast(User.role, String).ilike(f"%{role}%"))
-
-        query = query.offset(skip).limit(limit)
-    
+    async def list_users(cls, session: AsyncSession, skip: int = 0, limit: int = 10) -> List[User]:
+        query = select(User).offset(skip).limit(limit)
         result = await cls._execute_query(session, query)
         return result.scalars().all() if result else []
 

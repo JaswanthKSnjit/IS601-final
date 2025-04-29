@@ -209,3 +209,43 @@ async def test_search_users_by_username(async_client, admin_token):
     assert response.status_code == 200
     assert 'items' in response.json()
 
+@pytest.mark.asyncio
+async def test_invalid_profile_url_register(async_client):
+    user_data = {
+        "email": "badurluser@example.com",
+        "password": "StrongPass123!",
+        "profile_picture_url": "not-a-url"
+    }
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 422
+
+@pytest.mark.asyncio
+async def test_weak_password_rejected(async_client):
+    user_data = {
+        "email": "weakpassuser@example.com",
+        "password": "abc123",  # Weak password
+        "nickname": "weakuser"
+    }
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 422  # Validation error
+
+@pytest.mark.asyncio
+async def test_register_user_without_nickname(async_client):
+    user_data = {
+        "email": "nonickname@example.com",
+        "password": "SecurePass123!"
+        # No nickname provided
+    }
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 200
+    assert response.json()["nickname"] is not None
+
+@pytest.mark.asyncio
+async def test_admin_registration_requires_email_verification(async_client):
+    response = await async_client.post("/register/", json={
+        "email": "newadmin@example.com",
+        "password": "StrongPass123!"
+    })
+    assert response.status_code == 200
+    user_data = response.json()
+    assert user_data.get("email_verified") is False or None

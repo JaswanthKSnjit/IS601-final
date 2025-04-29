@@ -218,3 +218,13 @@ async def test_invalid_profile_url_register(async_client):
     }
     response = await async_client.post("/register/", json=user_data)
     assert response.status_code == 422
+
+@pytest.mark.asyncio
+async def test_weak_password_rejected(async_client):
+    user_data = {
+        "email": "weakpassuser@example.com",
+        "password": "abc123",  # Weak password
+        "nickname": "weakuser"
+    }
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 422  # Validation error

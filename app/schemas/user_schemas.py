@@ -1,5 +1,5 @@
 from builtins import ValueError, any, bool, str
-from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+from pydantic import BaseModel, EmailStr, Field, validator, root_validator, HttpUrl, constr
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -35,7 +35,15 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     email: EmailStr = Field(..., example="john.doe@example.com")
-    password: str = Field(..., example="Secure*1234")
+    password: constr(
+        min_length=8,
+        regex=r"^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+=\-{}[\]:;\"'<>,.?/\\|]).+$"
+) = Field(
+    ..., 
+    example="Secure*1234", 
+    description="Must contain at least 8 characters, 1 uppercase letter, 1 digit, and 1 special character."
+)
+    profile_picture_url: Optional[HttpUrl] = None
 
 class UserUpdate(UserBase):
     email: Optional[EmailStr] = Field(None, example="john.doe@example.com")

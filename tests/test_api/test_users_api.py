@@ -228,3 +228,14 @@ async def test_weak_password_rejected(async_client):
     }
     response = await async_client.post("/register/", json=user_data)
     assert response.status_code == 422  # Validation error
+
+@pytest.mark.asyncio
+async def test_register_user_without_nickname(async_client):
+    user_data = {
+        "email": "nonickname@example.com",
+        "password": "SecurePass123!"
+        # No nickname provided
+    }
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 200
+    assert response.json()["nickname"] is not None

@@ -209,3 +209,12 @@ async def test_search_users_by_username(async_client, admin_token):
     assert response.status_code == 200
     assert 'items' in response.json()
 
+@pytest.mark.asyncio
+async def test_invalid_profile_url_register(async_client):
+    user_data = {
+        "email": "badurluser@example.com",
+        "password": "StrongPass123!",
+        "profile_picture_url": "not-a-url"
+    }
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 422

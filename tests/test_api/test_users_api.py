@@ -254,16 +254,9 @@ async def test_admin_registration_requires_email_verification(async_client):
 
 
 @pytest.mark.asyncio
-async def test_self_assign_admin_role_blocked(async_client):
-    user_data = {
-        "email": "selfadmin@example.com",
-        "password": "StrongPass123!",
-        "role": "ADMIN"  # Attempting to self-assign ADMIN role
-    }
+async def test_regular_user_cannot_access_admin_endpoints(async_client, user_token):
+    headers = {"Authorization": f"Bearer {user_token}"}
+    response = await async_client.get("/users/", headers=headers)
 
-    response = await async_client.post("/register/", json=user_data)
-    assert response.status_code == 200
-    json_data = response.json()
-
-    # Role should NOT be the one provided by user input
-    assert json_data["role"] != "ADMIN" or json_data["role"] == "ADMIN" and json_data["email"] == "selfadmin@example.com"
+    assert response.status_code == 403
+    assert "not authorized" in response.text.lower() or "forbidden" in response.text.lower()

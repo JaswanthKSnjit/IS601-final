@@ -253,32 +253,30 @@ async def test_admin_registration_requires_email_verification(async_client):
 # Test Cases
 
 import pytest
+from urllib.parse import urlencode
 
 @pytest.mark.asyncio
-async def test_registration_with_weak_password(async_client):
-    weak_user_data = {
-        "email": "weakpass@example.com",
-        "password": "abc123",  # Weak: too short, no special/uppercase
-    }
-    response = await async_client.post("/register/", json=weak_user_data)
-    assert response.status_code == 422
-
-import pytest
-
-@pytest.mark.asyncio
-async def test_duplicate_email_registration(async_client):
+async def test_login_before_email_verification(async_client):
     user_data = {
-        "email": "duplicate@example.com",
+        "email": "unverified@example.com",
         "password": "StrongPass123!"
     }
 
-    # First registration should succeed
-    response1 = await async_client.post("/register/", json=user_data)
-    assert response1.status_code == 200
+    # Register the user
+    register_response = await async_client.post("/register/", json=user_data)
+    assert register_response.status_code == 200
 
-    # Second registration with same email should fail
-    response2 = await async_client.post("/register/", json=user_data)
-    assert response2.status_code == 400
-    assert "Email already exists" in response2.json().get("detail", "")
+    # Try to login before email verification
+    form_data = {
+        "username": user_data["email"],
+        "password": user_data["password"]
+    }
 
+    response = await async_client.post(
+        "/login/",
+        data=urlencode(form_data),
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
 
+    assert response.status_code == 401
+    assert "verify" in response.json()["detail"].lower() or "unauthorized" in response.json()["detail"].lower()

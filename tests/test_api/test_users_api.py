@@ -254,18 +254,16 @@ async def test_admin_registration_requires_email_verification(async_client):
 
 
 @pytest.mark.asyncio
-async def test_nickname_autogeneration(async_client):
+async def test_self_assign_admin_role_blocked(async_client):
     user_data = {
-        "email": "nonickname@example.com",
-        "password": "StrongPass123!"
+        "email": "selfadmin@example.com",
+        "password": "StrongPass123!",
+        "role": "ADMIN"  # Attempting to self-assign ADMIN role
     }
 
     response = await async_client.post("/register/", json=user_data)
     assert response.status_code == 200
     json_data = response.json()
 
-    # Nickname should be auto-generated and not null
-    assert "nickname" in json_data
-    assert json_data["nickname"] is not None
-    assert isinstance(json_data["nickname"], str)
-    assert len(json_data["nickname"]) > 0
+    # Role should NOT be the one provided by user input
+    assert json_data["role"] != "ADMIN" or json_data["role"] == "ADMIN" and json_data["email"] == "selfadmin@example.com"

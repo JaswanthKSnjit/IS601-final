@@ -263,3 +263,22 @@ async def test_registration_with_weak_password(async_client):
     response = await async_client.post("/register/", json=weak_user_data)
     assert response.status_code == 422
 
+import pytest
+
+@pytest.mark.asyncio
+async def test_duplicate_email_registration(async_client):
+    user_data = {
+        "email": "duplicate@example.com",
+        "password": "StrongPass123!"
+    }
+
+    # First registration should succeed
+    response1 = await async_client.post("/register/", json=user_data)
+    assert response1.status_code == 200
+
+    # Second registration with same email should fail
+    response2 = await async_client.post("/register/", json=user_data)
+    assert response2.status_code == 400
+    assert "Email already exists" in response2.json().get("detail", "")
+
+

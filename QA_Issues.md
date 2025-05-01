@@ -1,4 +1,4 @@
-## ✅ Closed QA Issues
+# Closed QA Issues
 
 Below are the 5 QA issues identified, fixed, and merged with separate branches and pull requests:
 

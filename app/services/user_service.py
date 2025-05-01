@@ -2,7 +2,7 @@ from builtins import Exception, bool, classmethod, int, str
 from datetime import datetime, timezone
 import secrets
 from typing import Optional, Dict, List
-from pydantic import ValidationError
+from pydantic import ValidationError, EmailStr
 from sqlalchemy import func, null, update, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession

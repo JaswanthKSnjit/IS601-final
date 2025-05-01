@@ -249,3 +249,17 @@ async def test_admin_registration_requires_email_verification(async_client):
     assert response.status_code == 200
     user_data = response.json()
     assert user_data.get("email_verified") is False or None
+
+# Test Cases
+
+import pytest
+
+@pytest.mark.asyncio
+async def test_registration_with_weak_password(async_client):
+    weak_user_data = {
+        "email": "weakpass@example.com",
+        "password": "abc123",  # Weak: too short, no special/uppercase
+    }
+    response = await async_client.post("/register/", json=weak_user_data)
+    assert response.status_code == 422
+

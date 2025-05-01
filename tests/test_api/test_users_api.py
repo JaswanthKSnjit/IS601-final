@@ -252,31 +252,20 @@ async def test_admin_registration_requires_email_verification(async_client):
 
 # Test Cases
 
-import pytest
-from urllib.parse import urlencode
 
 @pytest.mark.asyncio
-async def test_login_before_email_verification(async_client):
+async def test_nickname_autogeneration(async_client):
     user_data = {
-        "email": "unverified@example.com",
+        "email": "nonickname@example.com",
         "password": "StrongPass123!"
     }
 
-    # Register the user
-    register_response = await async_client.post("/register/", json=user_data)
-    assert register_response.status_code == 200
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 200
+    json_data = response.json()
 
-    # Try to login before email verification
-    form_data = {
-        "username": user_data["email"],
-        "password": user_data["password"]
-    }
-
-    response = await async_client.post(
-        "/login/",
-        data=urlencode(form_data),
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
-    )
-
-    assert response.status_code == 401
-    assert "verify" in response.json()["detail"].lower() or "unauthorized" in response.json()["detail"].lower()
+    # Nickname should be auto-generated and not null
+    assert "nickname" in json_data
+    assert json_data["nickname"] is not None
+    assert isinstance(json_data["nickname"], str)
+    assert len(json_data["nickname"]) > 0

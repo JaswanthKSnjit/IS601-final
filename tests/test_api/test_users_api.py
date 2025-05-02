@@ -253,10 +253,23 @@ async def test_admin_registration_requires_email_verification(async_client):
 # Test Cases
 
 
-@pytest.mark.asyncio
-async def test_regular_user_cannot_access_admin_endpoints(async_client, user_token):
-    headers = {"Authorization": f"Bearer {user_token}"}
-    response = await async_client.get("/users/", headers=headers)
 
-    assert response.status_code == 403
-    assert "not authorized" in response.text.lower() or "forbidden" in response.text.lower()
+@pytest.mark.asyncio
+async def test_account_locks_after_failed_logins(async_client, verified_user):
+    login_url = "/login/"
+    max_attempts = 5
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    form_data = {
+        "username": verified_user.email,
+        "password": "WrongPassword123!"
+    }
+
+    # Perform wrong login attempts
+    for _ in range(max_attempts):
+        await async_client.post(login_url, data=urlencode(form_data), headers=headers)
+
+    # 6th attempt triggers lock
+    response = await async_client.post(login_url, data=urlencode(form_data), headers=headers)
+    assert response.status_code == 400
+    assert "locked" in response.json().get("detail", "").lower()

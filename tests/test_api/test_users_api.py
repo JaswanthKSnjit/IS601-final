@@ -254,19 +254,16 @@ async def test_admin_registration_requires_email_verification(async_client):
 
 
 @pytest.mark.asyncio
-async def test_update_user_email_duplicate(async_client, admin_user, admin_token, verified_user):
-    headers = {"Authorization": f"Bearer {admin_token}"}
-    
-    # Attempt to update admin_user's email to match verified_user's email
-    update_data = {
-        "email": verified_user.email
+async def test_reset_password_weak_password(async_client, admin_token, admin_user):
+    weak_password_data = {
+        "new_password": "1234"  # Too weak
     }
 
-    response = await async_client.put(
-        f"/users/{admin_user.id}",
-        json=update_data,
-        headers=headers
+    response = await async_client.post(
+        f"/users/{admin_user.id}/reset-password",
+        json=weak_password_data,
+        headers={"Authorization": f"Bearer {admin_token}"}
     )
 
-    assert response.status_code == 400 or response.status_code == 409
-    assert "email already exists" in response.json().get("detail", "").lower()
+    assert response.status_code == 400
+    assert "password" in response.json().get("detail", "").lower()

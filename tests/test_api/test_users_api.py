@@ -254,16 +254,19 @@ async def test_admin_registration_requires_email_verification(async_client):
 
 
 @pytest.mark.asyncio
-async def test_login_invalid_email_format(async_client):
-    form_data = {
-        "username": "notanemail",  # Invalid email format
-        "password": "SomePassword123!"
+async def test_update_user_email_duplicate(async_client, admin_user, admin_token, verified_user):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # Attempt to update admin_user's email to match verified_user's email
+    update_data = {
+        "email": verified_user.email
     }
 
-    response = await async_client.post(
-        "/login/",
-        data=urlencode(form_data),
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    response = await async_client.put(
+        f"/users/{admin_user.id}",
+        json=update_data,
+        headers=headers
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400 or response.status_code == 409
+    assert "email already exists" in response.json().get("detail", "").lower()

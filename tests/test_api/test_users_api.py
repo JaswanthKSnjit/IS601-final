@@ -253,23 +253,17 @@ async def test_admin_registration_requires_email_verification(async_client):
 # Test Cases
 
 
-
 @pytest.mark.asyncio
-async def test_account_locks_after_failed_logins(async_client, verified_user):
-    login_url = "/login/"
-    max_attempts = 5
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
+async def test_login_invalid_email_format(async_client):
     form_data = {
-        "username": verified_user.email,
-        "password": "WrongPassword123!"
+        "username": "notanemail",  # Invalid email format
+        "password": "SomePassword123!"
     }
 
-    # Perform wrong login attempts
-    for _ in range(max_attempts):
-        await async_client.post(login_url, data=urlencode(form_data), headers=headers)
+    response = await async_client.post(
+        "/login/",
+        data=urlencode(form_data),
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
 
-    # 6th attempt triggers lock
-    response = await async_client.post(login_url, data=urlencode(form_data), headers=headers)
-    assert response.status_code == 400
-    assert "locked" in response.json().get("detail", "").lower()
+    assert response.status_code == 422

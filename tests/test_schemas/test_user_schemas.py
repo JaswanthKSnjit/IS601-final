@@ -1,206 +1,147 @@
-from builtins import Exception, bool, classmethod, int, str
-from datetime import datetime, timezone
-import secrets
-from typing import Optional, Dict, List
+import uuid
+import pytest
 from pydantic import ValidationError
-from sqlalchemy import func, null, update, select
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.dependencies import get_email_service, get_settings
-from app.models.user_model import User
-from app.schemas.user_schemas import UserCreate, UserUpdate
-from app.utils.nickname_gen import generate_nickname
-from app.utils.security import generate_verification_token, hash_password, verify_password
-from uuid import UUID
-from app.services.email_service import EmailService
-from app.models.user_model import UserRole
-import logging
+from datetime import datetime
+from app.schemas.user_schemas import UserBase, UserCreate, UserUpdate, UserResponse, UserListResponse, LoginRequest
 
-settings = get_settings()
-logger = logging.getLogger(__name__)
+# Fixtures for common test data
+@pytest.fixture
+def user_base_data():
+    return {
+        "nickname": "john_doe_123",
+        "email": "john.doe@example.com",
+        "first_name": "John",
+        "last_name": "Doe",
+        "role": "AUTHENTICATED",
+        "bio": "I am a software engineer with over 5 years of experience.",
+        "profile_picture_url": "https://example.com/profile_pictures/john_doe.jpg",
+        "linkedin_profile_url": "https://linkedin.com/in/johndoe",
+        "github_profile_url": "https://github.com/johndoe"
+    }
 
-class UserService:
-    @classmethod
-    async def _execute_query(cls, session: AsyncSession, query):
-        try:
-            result = await session.execute(query)
-            await session.commit()
-            return result
-        except SQLAlchemyError as e:
-            logger.error(f"Database error: {e}")
-            await session.rollback()
-            return None
+@pytest.fixture
+def user_create_data(user_base_data):
+    return {**user_base_data, "password": "SecurePassword123!"}
 
-    @classmethod
-    async def _fetch_user(cls, session: AsyncSession, **filters) -> Optional[User]:
-        query = select(User).filter_by(**filters)
-        result = await cls._execute_query(session, query)
-        return result.scalars().first() if result else None
+@pytest.fixture
+def user_update_data():
+    return {
+        "email": "john.doe.new@example.com",
+        "nickname": "j_doe",
+        "first_name": "John",
+        "last_name": "Doe",
+        "bio": "I specialize in backend development with Python and Node.js.",
+        "profile_picture_url": "https://example.com/profile_pictures/john_doe_updated.jpg"
+    }
 
-    @classmethod
-    async def get_by_id(cls, session: AsyncSession, user_id: UUID) -> Optional[User]:
-        return await cls._fetch_user(session, id=user_id)
+@pytest.fixture
+def user_response_data(user_base_data):
+    return {
+        "id": uuid.uuid4(),
+        "nickname": user_base_data["nickname"],
+        "first_name": user_base_data["first_name"],
+        "last_name": user_base_data["last_name"],
+        "role": user_base_data["role"],
+        "email": user_base_data["email"],
+        # "last_login_at": datetime.now(),
+        # "created_at": datetime.now(),
+        # "updated_at": datetime.now(),
+        "links": []
+    }
 
-    @classmethod
-    async def get_by_nickname(cls, session: AsyncSession, nickname: str) -> Optional[User]:
-        return await cls._fetch_user(session, nickname=nickname)
+@pytest.fixture
+def login_request_data():
+    return {"email": "john_doe_123@emai.com", "password": "SecurePassword123!"}
 
-    @classmethod
-    async def get_by_email(cls, session: AsyncSession, email: str) -> Optional[User]:
-        return await cls._fetch_user(session, email=email)
+# Tests for UserBase
+def test_user_base_valid(user_base_data):
+    user = UserBase(**user_base_data)
+    assert user.nickname == user_base_data["nickname"]
+    assert user.email == user_base_data["email"]
 
-    @classmethod
-    async def create(cls, session: AsyncSession, user_data: Dict[str, str], email_service: EmailService) -> Optional[User]:
-        try:
-            validated_data = UserCreate(**user_data).model_dump()
-            existing_user = await cls.get_by_email(session, validated_data['email'])
-            if existing_user:
-                logger.error("User with given email already exists.")
-                return None
-            validated_data['hashed_password'] = hash_password(validated_data.pop('password'))
-            new_user = User(**validated_data)
-            new_nickname = generate_nickname()
-            while await cls.get_by_nickname(session, new_nickname):
-                new_nickname = generate_nickname()
-            new_user.nickname = new_nickname
-            logger.info(f"User Role: {new_user.role}")
-            user_count = await cls.count(session)
-            new_user.role = UserRole.ADMIN if user_count == 0 else UserRole.ANONYMOUS            
-            if new_user.role == UserRole.ADMIN:
-                new_user.email_verified = True
+# Tests for UserCreate
+def test_user_create_valid(user_create_data):
+    user = UserCreate(**user_create_data)
+    assert user.nickname == user_create_data["nickname"]
+    assert user.password == user_create_data["password"]
 
-            else:
-                new_user.verification_token = generate_verification_token()
+# Tests for UserUpdate
+def test_user_update_valid(user_update_data):
+    user_update = UserUpdate(**user_update_data)
+    assert user_update.email == user_update_data["email"]
+    assert user_update.first_name == user_update_data["first_name"]
 
-            session.add(new_user)
-            await session.commit()
-            if new_user.role != UserRole.ADMIN:
-                await email_service.send_verification_email(new_user)
-            return new_user
-        except ValidationError as e:
-            logger.error(f"Validation error during user creation: {e}")
-            return None
+# Tests for UserResponse
+def test_user_response_valid(user_response_data):
+    user = UserResponse(**user_response_data)
+    assert user.id == user_response_data["id"]
+    # assert user.last_login_at == user_response_data["last_login_at"]
 
-    @classmethod
-    async def update(cls, session: AsyncSession, user_id: UUID, update_data: Dict[str, str]) -> Optional[User]:
-        try:
-            # validated_data = UserUpdate(**update_data).dict(exclude_unset=True)
-            validated_data = UserUpdate(**update_data).model_dump(exclude_unset=True)
-            if "email" in validated_data.keys():
-                existing_user = await cls.get_by_email(session, validated_data['email'])
-                if existing_user and existing_user.id!=user_id:
-                    logger.error("User with given email already exists.")
-                    return "EMAIL_ALREADY_REGISTERED"
-            if 'password' in validated_data:
-                validated_data['hashed_password'] = hash_password(validated_data.pop('password'))
-            query = update(User).where(User.id == user_id).values(**validated_data).execution_options(synchronize_session="fetch")
-            await cls._execute_query(session, query)
-            updated_user = await cls.get_by_id(session, user_id)
-            if updated_user:
-                session.refresh(updated_user)  # Explicitly refresh the updated user object
-                logger.info(f"User {user_id} updated successfully.")
-                return updated_user
-            else:
-                logger.error(f"User {user_id} not found after update attempt.")
-            return None
-        except Exception as e:  # Broad exception handling for debugging
-            logger.error(f"Error during user update: {e}")
-            return None
+# Tests for LoginRequest
+def test_login_request_valid(login_request_data):
+    login = LoginRequest(**login_request_data)
+    assert login.email == login_request_data["email"]
+    assert login.password == login_request_data["password"]
 
-    @classmethod
-    async def delete(cls, session: AsyncSession, user_id: UUID) -> bool:
-        user = await cls.get_by_id(session, user_id)
-        if not user:
-            logger.info(f"User with ID {user_id} not found.")
-            return False
-        await session.delete(user)
-        await session.commit()
-        return True
+# Parametrized tests for nickname and email validation
+@pytest.mark.parametrize("nickname", ["test_user", "test-user", "testuser123", "123test"])
+def test_user_base_nickname_valid(nickname, user_base_data):
+    user_base_data["nickname"] = nickname
+    user = UserBase(**user_base_data)
+    assert user.nickname == nickname
 
-    @classmethod
-    async def list_users(cls, session: AsyncSession, skip: int = 0, limit: int = 10) -> List[User]:
-        query = select(User).offset(skip).limit(limit)
-        result = await cls._execute_query(session, query)
-        return result.scalars().all() if result else []
+@pytest.mark.parametrize("nickname", ["test user", "test?user", "", "us"])
+def test_user_base_nickname_invalid(nickname, user_base_data):
+    user_base_data["nickname"] = nickname
+    with pytest.raises(ValidationError):
+        UserBase(**user_base_data)
 
-    @classmethod
-    async def register_user(cls, session: AsyncSession, user_data: Dict[str, str], get_email_service) -> Optional[User]:
-        return await cls.create(session, user_data, get_email_service)
-    
+# Parametrized tests for URL validation
+@pytest.mark.parametrize("url", ["http://valid.com/profile.jpg", "https://valid.com/profile.png", None])
+def test_user_base_url_valid(url, user_base_data):
+    user_base_data["profile_picture_url"] = url
+    user = UserBase(**user_base_data)
+    assert user.profile_picture_url == url
 
-    @classmethod
-    async def login_user(cls, session: AsyncSession, email: str, password: str) -> Optional[User]:
-        user = await cls.get_by_email(session, email)
-        if user:
-            if user.email_verified is False:
-                return None
-            if user.is_locked:
-                return None
-            if verify_password(password, user.hashed_password):
-                user.failed_login_attempts = 0
-                user.last_login_at = datetime.now(timezone.utc)
-                session.add(user)
-                await session.commit()
-                return user
-            else:
-                user.failed_login_attempts += 1
-                if user.failed_login_attempts >= settings.max_login_attempts:
-                    user.is_locked = True
-                session.add(user)
-                await session.commit()
-        return None
-
-    @classmethod
-    async def is_account_locked(cls, session: AsyncSession, email: str) -> bool:
-        user = await cls.get_by_email(session, email)
-        return user.is_locked if user else False
+@pytest.mark.parametrize("url", ["ftp://invalid.com/profile.jpg", "http//invalid", "https//invalid"])
+def test_user_base_url_invalid(url, user_base_data):
+    user_base_data["profile_picture_url"] = url
+    with pytest.raises(ValidationError):
+        UserBase(**user_base_data)
 
 
-    @classmethod
-    async def reset_password(cls, session: AsyncSession, user_id: UUID, new_password: str) -> bool:
-        hashed_password = hash_password(new_password)
-        user = await cls.get_by_id(session, user_id)
-        if user:
-            user.hashed_password = hashed_password
-            user.failed_login_attempts = 0  # Resetting failed login attempts
-            user.is_locked = False  # Unlocking the user account, if locked
-            session.add(user)
-            await session.commit()
-            return True
-        return False
+def test_user_base_empty_optional_fields(user_base_data):
+    """Test that optional fields can be None or empty"""
+    user_base_data.update({
+        "first_name": None,
+        "last_name": None,
+        "bio": None,
+        "profile_picture_url": None,
+        "linkedin_profile_url": None,
+        "github_profile_url": None
+    })
+    user = UserBase(**user_base_data)
+    assert user.first_name is None
+    assert user.last_name is None
 
-    @classmethod
-    async def verify_email_with_token(cls, session: AsyncSession, user_id: UUID, token: str) -> bool:
-        user = await cls.get_by_id(session, user_id)
-        if user and user.verification_token == token:
-            user.email_verified = True
-            user.verification_token = None  # Clear the token once used
-            user.role = UserRole.AUTHENTICATED
-            session.add(user)
-            await session.commit()
-            return True
-        return False
+@pytest.mark.parametrize("invalid_role", [
+    "SUPERADMIN",  # Not in the defined roles
+    "admin",       # Case-sensitive
+    123            # Wrong type
+])
+def test_user_base_invalid_role(invalid_role, user_base_data):
+    """Test invalid role assignments"""
+    user_base_data["role"] = invalid_role
+    with pytest.raises(ValidationError):
+        UserBase(**user_base_data)
 
-    @classmethod
-    async def count(cls, session: AsyncSession) -> int:
-        """
-        Count the number of users in the database.
-
-        :param session: The AsyncSession instance for database access.
-        :return: The count of users.
-        """
-        query = select(func.count()).select_from(User)
-        result = await session.execute(query)
-        count = result.scalar()
-        return count
-    
-    @classmethod
-    async def unlock_user_account(cls, session: AsyncSession, user_id: UUID) -> bool:
-        user = await cls.get_by_id(session, user_id)
-        if user and user.is_locked:
-            user.is_locked = False
-            user.failed_login_attempts = 0  # Optionally reset failed login attempts
-            session.add(user)
-            await session.commit()
-            return True
-        return False
+@pytest.mark.parametrize("url", [
+    "http://sub.domain.com/path/to/resource",
+    "https://domain.com:8080/path",
+    "http://localhost/resource"
+])
+def test_additional_url_formats(url, user_base_data):
+    """Test additional valid URL formats"""
+    user_base_data["profile_picture_url"] = url
+    user = UserBase(**user_base_data)
+    assert user.profile_picture_url == url

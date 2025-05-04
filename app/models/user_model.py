@@ -7,10 +7,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Enum
 from app.database import Base
 
-class UserRole(str, Enum):
+class UserRole(Enum):
     """Enumeration of user roles within the application, stored as ENUM in the database."""
     ANONYMOUS = "ANONYMOUS"
     AUTHENTICATED = "AUTHENTICATED"
@@ -52,7 +51,6 @@ class User(Base):
         update_professional_status(status): Updates the professional status and logs the update time.
     """
     __tablename__ = "users"
-    __table_args__ = {"extend_existing": True}
     __mapper_args__ = {"eager_defaults": True}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -64,7 +62,7 @@ class User(Base):
     profile_picture_url: Mapped[str] = Column(String(255), nullable=True)
     linkedin_profile_url: Mapped[str] = Column(String(255), nullable=True)
     github_profile_url: Mapped[str] = Column(String(255), nullable=True)
-    role = Column(SQLAlchemyEnum(UserRole, name="UserRole", create_constraint=True), nullable=False)
+    role: Mapped[UserRole] = Column(SQLAlchemyEnum(UserRole, name='UserRole', create_constraint=True), nullable=False)
     is_professional: Mapped[bool] = Column(Boolean, default=False)
     professional_status_updated_at: Mapped[datetime] = Column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime] = Column(DateTime(timezone=True), nullable=True)

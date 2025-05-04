@@ -139,3 +139,40 @@ async def test_update_user_role(db_session: AsyncSession, user: User):
     await db_session.commit()
     await db_session.refresh(user)
     assert user.role == UserRole.ADMIN, "Role update should persist correctly in the database"
+
+
+@pytest.mark.asyncio
+async def test_user_metadata_updates(db_session: AsyncSession, user: User):
+    """
+    Tests updating metadata fields.
+    """
+    # Update metadata fields
+    updates = {
+        'first_name': 'John',
+        'last_name': 'Doe',
+        'bio': 'Software engineer passionate about testing',
+        'location': 'San Francisco, CA',
+        'website': 'https://johndoe.com'
+    }
+
+    for field, value in updates.items():
+        setattr(user, field, value)
+
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    # Verify each metadata field
+    for field, value in updates.items():
+        assert getattr(user, field) == value, f"{field} should update correctly"
+
+@pytest.mark.asyncio
+async def test_user_soft_delete(db_session: AsyncSession, user: User):
+    """
+    Tests soft delete functionality for users.
+    """
+    # Soft delete the user
+    user.is_active = False
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    assert not user.is_active, "User should be marked as inactive"

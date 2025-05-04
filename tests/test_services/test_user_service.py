@@ -62,14 +62,16 @@ async def test_get_by_email_user_does_not_exist(db_session):
     assert retrieved_user is None
 
 # Test updating a user with valid data
-@pytest.mark.asyncio
 async def test_update_user_valid_data(db_session, user):
-    new_email = "valid_email@example.com"
-    current_user = {"role": UserRole.ADMIN.name}  # Ensure ADMIN role
-    updated_user = await UserService.update(db_session, user.id, {"email": new_email}, current_user=current_user)
+    new_email = "updated_email@example.com"
+    updated_user = await UserService.update(db_session, user.id, {"email": new_email})
     assert updated_user is not None
     assert updated_user.email == new_email
 
+# Test updating a user with invalid data
+async def test_update_user_invalid_data(db_session, user):
+    updated_user = await UserService.update(db_session, user.id, {"email": "invalidemail"})
+    assert updated_user is None
 
 # Test deleting a user who exists
 async def test_delete_user_exists(db_session, user):
@@ -147,8 +149,8 @@ async def test_reset_password(db_session, user):
 
 # Test verifying a user's email
 async def test_verify_email_with_token(db_session, user):
-    token = "valid_token_example"
-    user.verification_token = token
+    token = "valid_token_example"  # This should be set in your user setup if it depends on a real token
+    user.verification_token = token  # Simulating setting the token in the database
     await db_session.commit()
     result = await UserService.verify_email_with_token(db_session, user.id, token)
     assert result is True
@@ -159,3 +161,31 @@ async def test_unlock_user_account(db_session, locked_user):
     assert unlocked, "The account should be unlocked"
     refreshed_user = await UserService.get_by_id(db_session, locked_user.id)
     assert not refreshed_user.is_locked, "The user should no longer be locked"
+
+# Test Role Changes
+async def test_unauthorized_role_changes(db_session, user):
+    """
+    Verify that certain role changes are not allowed
+    """
+    # Attempt to change role to an unauthorized value
+    updated_user = await UserService.update(db_session, user.id, {"role": UserRole.ADMIN})
+    
+    # Depending on implementation, this might return None or keep the original role
+    if updated_user:
+        assert updated_user.role != UserRole.ADMIN
+
+# Test User Deletion and Subsequent Operations
+async def test_operations_on_deleted_user(db_session, user):
+    """
+    Verify that operations on a deleted user fail
+    """
+    # Delete the user
+    await UserService.delete(db_session, user.id)
+    
+    # Try to fetch the deleted user
+    deleted_user = await UserService.get_by_id(db_session, user.id)
+    assert deleted_user is None
+    
+    # Try to update the deleted user
+    updated_user = await UserService.update(db_session, user.id, {"email": "new_email@example.com"})
+    assert updated_user is None

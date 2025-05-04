@@ -73,4 +73,3 @@ class AnalyticsService:
         await db.commit()
 
 
-

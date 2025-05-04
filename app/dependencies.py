@@ -23,8 +23,14 @@ async def get_db() -> AsyncSession:
     async with async_session_factory() as session:
         try:
             yield session
+            await session.commit()  # Commit if no exception occurred
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            await session.rollback()  # Rollback on error
+            if isinstance(e, SQLAlchemyError):
+                raise HTTPException(status_code=500, detail="Database error occurred")
+            raise e  # Re-raise other exceptions
+        finally:
+            await session.close()  # Ensure session is closed
         
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")

@@ -8,13 +8,13 @@
 
 ## Screenshots Link
 1. Passes all [pytest](Screenshots/pytest.png)
-2. Test coverage improved to [100%](Screenshots/test.png)
+2. Test coverage improved to [100%](Screenshots/tests.png)
 3. Docker image deployed [here](Screenshots/docker.png)
 4. New feature added - [User Search & and Filtering](New_Feautre.md)
 
 ---
 
-## Course reflection document [here]()
+## Course reflection document [here](IS601-Course-Reflection.docx)
 
 ## Project Evaluation Overview
 

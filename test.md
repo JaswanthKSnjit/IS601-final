@@ -1,6 +1,6 @@
 # Test Coverage Improvement Summary
 
-- Passes all 108 tests in pytest - [here](Screenshots/pytest.png) 
+- Passes all tests in pytest - [here](Screenshots/pytest.png) 
 - Improved the overall test coverage to 91% - [here](Screenshots/tests.png)
 
 This section documents the 10 issues resolved through dedicated test cases to ensure high reliability and coverage of critical user features in the project.

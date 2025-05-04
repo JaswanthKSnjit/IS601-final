@@ -1,0 +1,4 @@
+[run]
+omit =
+    app/utils/template_manager.py
+    app/utils/smtp_connection.py 

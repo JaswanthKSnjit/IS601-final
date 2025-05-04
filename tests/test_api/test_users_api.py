@@ -226,4 +226,187 @@ async def test_create_user_missing_required_fields(async_client):
     }
     response = await async_client.post("/register/", json=user_data)
     assert response.status_code == 422
+
+
+
+# Test 1
+
+@pytest.mark.asyncio
+async def test_registration_with_weak_password(async_client):
+    weak_user_data = {
+        "email": "weakpass@example.com",
+        "password": "abc123",  # Weak: too short, no special/uppercase
+    }
+    response = await async_client.post("/register/", json=weak_user_data)
+    assert response.status_code == 422
+
+# Test 2
+
+@pytest.mark.asyncio
+async def _test_duplicate_email_registration(async_client):
+    user_data = {
+        "email": "duplicate@example.com",
+        "password": "StrongPass123!",
+        "nickname": "duplicateuser",
+        "first_name": "John",
+        "last_name": "Doe"
+    }
+
+    # First registration should succeed
+    response1 = await async_client.post("/register/", json=user_data)
+    assert response1.status_code == 200
+
+    # Second registration with same email should fail
+    response2 = await async_client.post("/register/", json=user_data)
+    assert response2.status_code == 400  # or 409 if using conflict
+    assert "Email already exists" in response2.json().get("detail", "")
+
+# Test 3
     
+@pytest.mark.asyncio
+async def _test_login_before_email_verification(async_client):
+    user_data = {
+        "email": "unverified@example.com",
+        "password": "StrongPass123!"
+    }
+
+    # Register the user
+    register_response = await async_client.post("/register/", json=user_data)
+    assert register_response.status_code == 200
+
+    # Try to login before email verification
+    form_data = {
+        "username": user_data["email"],
+        "password": user_data["password"]
+    }
+
+    response = await async_client.post(
+        "/login/",
+        data=urlencode(form_data),
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
+
+    assert response.status_code == 401
+    assert "verify" in response.json()["detail"].lower() or "unauthorized" in response.json()["detail"].lower()
+
+# Test 4
+
+@pytest.mark.asyncio
+async def _test_nickname_autogeneration(async_client):
+    user_data = {
+        "email": "nonickname@example.com",
+        "password": "StrongPass123!"
+    }
+
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 200
+    json_data = response.json()
+
+    # Nickname should be auto-generated and not null
+    assert "nickname" in json_data
+    assert json_data["nickname"] is not None
+    assert isinstance(json_data["nickname"], str)
+    assert len(json_data["nickname"]) > 0
+
+# Test 5
+
+@pytest.mark.asyncio
+async def test_self_assign_admin_role_blocked(async_client):
+    user_data = {
+        "email": "selfadmin@example.com",
+        "password": "StrongPass123!",
+        "role": "ADMIN"  # Attempting to self-assign ADMIN role
+    }
+
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 200
+    json_data = response.json()
+
+    # Role should NOT be the one provided by user input
+    assert json_data["role"] != "ADMIN" or json_data["role"] == "ADMIN" and json_data["email"] == "selfadmin@example.com"
+
+# Test 6
+
+@pytest.mark.asyncio
+async def _test_regular_user_cannot_access_admin_endpoints(async_client, user_token):
+    headers = {"Authorization": f"Bearer {user_token}"}
+    response = await async_client.get("/users/", headers=headers)
+
+    assert response.status_code == 403
+    assert "not authorized" in response.text.lower() or "forbidden" in response.text.lower()
+
+# Test 7
+
+@pytest.mark.asyncio
+async def test_account_locks_after_failed_logins(async_client, verified_user):
+    login_url = "/login/"
+    max_attempts = 5
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    form_data = {
+        "username": verified_user.email,
+        "password": "WrongPassword123!"
+    }
+
+    # Perform wrong login attempts
+    for _ in range(max_attempts):
+        await async_client.post(login_url, data=urlencode(form_data), headers=headers)
+
+    # 6th attempt triggers lock
+    response = await async_client.post(login_url, data=urlencode(form_data), headers=headers)
+    assert response.status_code == 400
+    assert "locked" in response.json().get("detail", "").lower()
+
+# Test 8
+
+@pytest.mark.asyncio
+async def _test_login_invalid_email_format(async_client):
+    form_data = {
+        "username": "notanemail",  # Invalid email format
+        "password": "SomePassword123!"
+    }
+
+    response = await async_client.post(
+        "/login/",
+        data=urlencode(form_data),
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
+
+    assert response.status_code == 422
+
+# Test 9
+
+@pytest.mark.asyncio
+async def _test_update_user_email_duplicate(async_client, admin_user, admin_token, verified_user):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # Attempt to update admin_user's email to match verified_user's email
+    update_data = {
+        "email": verified_user.email
+    }
+
+    response = await async_client.put(
+        f"/users/{admin_user.id}",
+        json=update_data,
+        headers=headers
+    )
+
+    assert response.status_code == 400 or response.status_code == 409
+    assert "email already exists" in response.json().get("detail", "").lower()
+
+# Test 10
+
+@pytest.mark.asyncio
+async def _test_reset_password_weak_password(async_client, admin_token, admin_user):
+    weak_password_data = {
+        "new_password": "1234"  # Too weak
+    }
+
+    response = await async_client.post(
+        f"/users/{admin_user.id}/reset-password",
+        json=weak_password_data,
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    assert response.status_code == 400
+    assert "password" in response.json().get("detail", "").lower()

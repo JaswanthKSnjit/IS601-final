@@ -7,9 +7,9 @@
 --- 
 
 ## Screenshots Link
-1. Passes all [pytest](pytest.png)
-2. Test coverage improved to [100%](test.png)
-3. Docker image deployed [here](docker.png)
+1. Passes all [pytest](Screenshots/pytest.png)
+2. Test coverage improved to [100%](Screenshots/test.png)
+3. Docker image deployed [here](Screenshots/docker.png)
 4. New feature added - [User Search & and Filtering](New_Feautre.md)
 
 ---

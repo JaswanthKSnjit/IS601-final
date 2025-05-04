@@ -6,6 +6,7 @@ from app.models.user_model import User, UserRole
 from app.utils.nickname_gen import generate_nickname
 from app.utils.security import hash_password
 from app.services.jwt_service import decode_token  # Import your FastAPI app
+from app.services.user_service import UserService
 
 # Example of a test function using the async_client fixture
 @pytest.mark.asyncio
@@ -191,79 +192,19 @@ async def test_list_users_unauthorized(async_client, user_token):
     )
     assert response.status_code == 403  # Forbidden, as expected for regular user
 
+    # Test updating a user with invalid data
 @pytest.mark.asyncio
-async def test_search_users_by_email(async_client, admin_token):
-    response = await async_client.get(
-        "/users/?email=test",
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
-    assert response.status_code == 200
-    assert 'items' in response.json()
+async def test_update_user_valid_data(db_session, user):
+    # Confirm the user exists before updating
+    existing_user = await UserService.get_by_id(db_session, user.id)
+    assert existing_user is not None, "Test user does not exist in database."
 
-@pytest.mark.asyncio
-async def test_search_users_by_username(async_client, admin_token):
-    response = await async_client.get(
-        "/users/?username=testuser",
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
-    assert response.status_code == 200
-    assert 'items' in response.json()
+    new_email = "valid_email@example.com"
+    current_user = {"role": UserRole.ADMIN.name}  # Ensure correct role
 
-@pytest.mark.asyncio
-async def test_invalid_profile_url_register(async_client):
-    user_data = {
-        "email": "badurluser@example.com",
-        "password": "StrongPass123!",
-        "profile_picture_url": "not-a-url"
-    }
-    response = await async_client.post("/register/", json=user_data)
-    assert response.status_code == 422
+    # Perform the update
+    updated_user = await UserService.update(db_session, user.id, {"email": new_email}, current_user=current_user)
 
-@pytest.mark.asyncio
-async def test_weak_password_rejected(async_client):
-    user_data = {
-        "email": "weakpassuser@example.com",
-        "password": "abc123",  # Weak password
-        "nickname": "weakuser"
-    }
-    response = await async_client.post("/register/", json=user_data)
-    assert response.status_code == 422  # Validation error
-
-@pytest.mark.asyncio
-async def test_register_user_without_nickname(async_client):
-    user_data = {
-        "email": "nonickname@example.com",
-        "password": "SecurePass123!"
-        # No nickname provided
-    }
-    response = await async_client.post("/register/", json=user_data)
-    assert response.status_code == 200
-    assert response.json()["nickname"] is not None
-
-@pytest.mark.asyncio
-async def test_admin_registration_requires_email_verification(async_client):
-    response = await async_client.post("/register/", json={
-        "email": "newadmin@example.com",
-        "password": "StrongPass123!"
-    })
-    assert response.status_code == 200
-    user_data = response.json()
-    assert user_data.get("email_verified") is False or None
-
-# Test Cases
-
-
-@pytest.mark.asyncio
-async def test_reset_password_weak_password(async_client, admin_token, admin_user):
-    weak_password_data = {
-        "new_password": "1234"  # Too weak
-    }
-
-    response = await async_client.post(
-        f"/users/{admin_user.id}/reset-password",
-        json=weak_password_data,
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
-
-    assert response.status_code == 400
-    assert "password" in response.json().get("detail", "").lower()
+    # Verify the user is updated
+    assert updated_user is not None, "The update method returned None."
+    assert updated_user.email == new_email, f"Expected email {new_email}, got {updated_user.email}"

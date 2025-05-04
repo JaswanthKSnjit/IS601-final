@@ -1,249 +1,129 @@
-"""
-This Python file is part of a FastAPI application, demonstrating user management functionalities including creating, reading,
-updating, and deleting (CRUD) user information. It uses OAuth2 with Password Flow for security, ensuring that only authenticated
-users can perform certain operations. Additionally, the file showcases the integration of FastAPI with SQLAlchemy for asynchronous
-database operations, enhancing performance by non-blocking database calls.
+from builtins import bool, int, str
+from datetime import datetime, timezone
+from enum import Enum
+import uuid
+from sqlalchemy import (
+    Column, String, Integer, DateTime, Boolean, func, Enum as SQLAlchemyEnum, ForeignKey
+)
+from sqlalchemy.dialects.postgresql import UUID, ENUM
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.database import Base
 
-The implementation emphasizes RESTful API principles, with endpoints for each CRUD operation and the use of HTTP status codes
-and exceptions to communicate the outcome of operations. It introduces the concept of HATEOAS (Hypermedia as the Engine of
-Application State) by including navigational links in API responses, allowing clients to discover other related operations dynamically.
+class UserRole(Enum):
+    """Enumeration of user roles within the application, stored as ENUM in the database."""
+    ANONYMOUS = "ANONYMOUS"
+    AUTHENTICATED = "AUTHENTICATED"
+    MANAGER = "MANAGER"
+    ADMIN = "ADMIN"
 
-OAuth2PasswordBearer is employed to extract the token from the Authorization header and verify the user's identity, providing a layer
-of security to the operations that manipulate user data.
-
-Key Highlights:
-- Use of FastAPI's Dependency Injection system to manage database sessions and user authentication.
-- Demonstrates how to perform CRUD operations in an asynchronous manner using SQLAlchemy with FastAPI.
-- Implements HATEOAS by generating dynamic links for user-related actions, enhancing API discoverability.
-- Utilizes OAuth2PasswordBearer for securing API endpoints, requiring valid access tokens for operations.
-"""
-
-from builtins import dict, int, len, str
-from datetime import timedelta
-from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.dependencies import get_current_user, get_db, get_email_service, require_role
-from app.schemas.pagination_schema import EnhancedPagination
-from app.schemas.token_schema import TokenResponse
-from app.schemas.user_schemas import LoginRequest, UserBase, UserCreate, UserListResponse, UserResponse, UserUpdate
-from app.services.user_service import UserService
-from app.services.jwt_service import create_access_token
-from app.utils.link_generation import create_user_links, generate_pagination_links
-from app.dependencies import get_settings
-from app.services.email_service import EmailService
-router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-settings = get_settings()
-@router.get("/users/{user_id}", response_model=UserResponse, name="get_user", tags=["User Management Requires (Admin or Manager Roles)"])
-async def get_user(user_id: UUID, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))):
+class User(Base):
     """
-    Endpoint to fetch a user by their unique identifier (UUID).
-
-    Utilizes the UserService to query the database asynchronously for the user and constructs a response
-    model that includes the user's details along with HATEOAS links for possible next actions.
-
-    Args:
-        user_id: UUID of the user to fetch.
-        request: The request object, used to generate full URLs in the response.
-        db: Dependency that provides an AsyncSession for database access.
-        token: The OAuth2 access token obtained through OAuth2PasswordBearer dependency.
-    """
-    user = await UserService.get_by_id(db, user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    return UserResponse.model_construct(
-        id=user.id,
-        nickname=user.nickname,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        bio=user.bio,
-        profile_picture_url=user.profile_picture_url,
-        github_profile_url=user.github_profile_url,
-        linkedin_profile_url=user.linkedin_profile_url,
-        role=user.role,
-        email=user.email,
-        last_login_at=user.last_login_at,
-        created_at=user.created_at,
-        updated_at=user.updated_at,
-        links=create_user_links(user.id, request)  
-    )
-
-# Additional endpoints for update, delete, create, and list users follow a similar pattern, using
-# asynchronous database operations, handling security with OAuth2PasswordBearer, and enhancing response
-# models with dynamic HATEOAS links.
-
-# This approach not only ensures that the API is secure and efficient but also promotes a better client
-# experience by adhering to REST principles and providing self-discoverable operations.
-
-@router.put("/users/{user_id}", response_model=UserResponse, name="update_user", tags=["User Management Requires (Admin or Manager Roles)"])
-async def update_user(user_id: UUID, user_update: UserUpdate, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))):
-    """
-    Update user information.
-
-    - **user_id**: UUID of the user to update.
-    - **user_update**: UserUpdate model with updated user information.
-    """
-    user_data = user_update.model_dump(exclude_unset=True)
-    updated_user = await UserService.update(db, user_id, user_data)
-    if updated_user =="EMAIL_ALREADY_REGISTERED":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email address already taken")
-    if not updated_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    return UserResponse.model_construct(
-        id=updated_user.id,
-        bio=updated_user.bio,
-        first_name=updated_user.first_name,
-        last_name=updated_user.last_name,
-        nickname=updated_user.nickname,
-        email=updated_user.email,
-        role=updated_user.role,
-        last_login_at=updated_user.last_login_at,
-        profile_picture_url=updated_user.profile_picture_url,
-        github_profile_url=updated_user.github_profile_url,
-        linkedin_profile_url=updated_user.linkedin_profile_url,
-        created_at=updated_user.created_at,
-        updated_at=updated_user.updated_at,
-        links=create_user_links(updated_user.id, request)
-    )
-
-
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, name="delete_user", tags=["User Management Requires (Admin or Manager Roles)"])
-async def delete_user(user_id: UUID, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))):
-    """
-    Delete a user by their ID.
-
-    - **user_id**: UUID of the user to delete.
-    """
-    success = await UserService.delete(db, user_id)
-    if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-
-@router.post("/users/", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["User Management Requires (Admin or Manager Roles)"], name="create_user")
-async def create_user(user: UserCreate, request: Request, db: AsyncSession = Depends(get_db), email_service: EmailService = Depends(get_email_service), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))):
-    """
-    Create a new user.
-
-    This endpoint creates a new user with the provided information. If the email
-    already exists, it returns a 400 error. On successful creation, it returns the
-    newly created user's information along with links to related actions.
-
-    Parameters:
-    - user (UserCreate): The user information to create.
-    - request (Request): The request object.
-    - db (AsyncSession): The database session.
-
-    Returns:
-    - UserResponse: The newly created user's information along with navigation links.
-    """
-    existing_user = await UserService.get_by_email(db, user.email)
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
+    Represents a user within the application, corresponding to the 'users' table in the database.
+    This class uses SQLAlchemy ORM for mapping attributes to database columns efficiently.
     
-    created_user = await UserService.create(db, user.model_dump(), email_service)
-    if not created_user:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user")
-    
-    
-    return UserResponse.model_construct(
-        id=created_user.id,
-        bio=created_user.bio,
-        first_name=created_user.first_name,
-        last_name=created_user.last_name,
-        profile_picture_url=created_user.profile_picture_url,
-        nickname=created_user.nickname,
-        email=created_user.email,
-        role=created_user.role,
-        last_login_at=created_user.last_login_at,
-        created_at=created_user.created_at,
-        updated_at=created_user.updated_at,
-        links=create_user_links(created_user.id, request)
-    )
+    Attributes:
+        id (UUID): Unique identifier for the user.
+        nickname (str): Unique nickname for privacy, required.
+        email (str): Unique email address, required.
+        email_verified (bool): Flag indicating if the email has been verified.
+        hashed_password (str): Hashed password for security, required.
+        first_name (str): Optional first name of the user.
+        last_name (str): Optional first name of the user.
+
+        bio (str): Optional biographical information.
+        profile_picture_url (str): Optional URL to a profile picture.
+        linkedin_profile_url (str): Optional LinkedIn profile URL.
+        github_profile_url (str): Optional GitHub profile URL.
+        role (UserRole): Role of the user within the application.
+        is_professional (bool): Flag indicating professional status.
+        professional_status_updated_at (datetime): Timestamp of last professional status update.
+        last_login_at (datetime): Timestamp of the last login.
+        failed_login_attempts (int): Count of failed login attempts.
+        is_locked (bool): Flag indicating if the account is locked.
+        created_at (datetime): Timestamp when the user was created, set by the server.
+        updated_at (datetime): Timestamp of the last update, set by the server.
+
+    Methods:
+        lock_account(): Locks the user account.
+        unlock_account(): Unlocks the user account.
+        verify_email(): Marks the user's email as verified.
+        has_role(role_name): Checks if the user has a specified role.
+        update_professional_status(status): Updates the professional status and logs the update time.
+    """
+    __tablename__ = "users"
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    nickname: Mapped[str] = Column(String(50), unique=True, nullable=False, index=True)
+    email: Mapped[str] = Column(String(255), unique=True, nullable=False, index=True)
+    first_name: Mapped[str] = Column(String(100), nullable=True)
+    last_name: Mapped[str] = Column(String(100), nullable=True)
+    bio: Mapped[str] = Column(String(500), nullable=True)
+    profile_picture_url: Mapped[str] = Column(String(255), nullable=True)
+    linkedin_profile_url: Mapped[str] = Column(String(255), nullable=True)
+    github_profile_url: Mapped[str] = Column(String(255), nullable=True)
+    role: Mapped[UserRole] = Column(SQLAlchemyEnum(UserRole, name='UserRole', create_constraint=True), nullable=False)
+    is_professional: Mapped[bool] = Column(Boolean, default=False)
+    professional_status_updated_at: Mapped[datetime] = Column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime] = Column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts: Mapped[int] = Column(Integer, default=0)
+    is_locked: Mapped[bool] = Column(Boolean, default=False)
+    created_at: Mapped[datetime] = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    verification_token = Column(String, nullable=True)
+    email_verified: Mapped[bool] = Column(Boolean, default=False, nullable=False)
+    hashed_password: Mapped[str] = Column(String(255), nullable=False)
+     # New fields for retention analytics
+    invited_by_user_id: Mapped[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    invited_by = relationship("User", remote_side="User.id", backref="invited_users")
+    is_converted: Mapped[bool] = Column(Boolean, default=False)
 
 
-@router.get("/users/", response_model=UserListResponse, tags=["User Management Requires (Admin or Manager Roles)"])
-async def list_users(
-    request: Request,
-    skip: int = 0,
-    limit: int = 10,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))
-):
-    total_users = await UserService.count(db)
-    users = await UserService.list_users(db, skip, limit)
+    def __repr__(self) -> str:
+        """Provides a readable representation of a user object."""
+        return f"<User {self.nickname}, Role: {self.role.name}>"
 
-    user_responses = [
-        UserResponse.model_validate(user) for user in users
-    ]
-    
-    pagination_links = generate_pagination_links(request, skip, limit, total_users)
-    
-    # Construct the final response with pagination details
-    return UserListResponse(
-        items=user_responses,
-        total=total_users,
-        page=skip // limit + 1,
-        size=len(user_responses),
-        links=pagination_links  # Ensure you have appropriate logic to create these links
-    )
+    def lock_account(self):
+        self.is_locked = True
+
+    def unlock_account(self):
+        self.is_locked = False
+
+    def verify_email(self):
+        self.email_verified = True
+
+    def has_role(self, role_name: UserRole) -> bool:
+        return self.role == role_name
+
+    def update_professional_status(self, status: bool):
+        """Updates the professional status and logs the update time."""
+        self.is_professional = status
+        self.professional_status_updated_at = func.now()
+
+    # New feature of retention analytics
+    def update_last_login(self):
+        """Updates the last login timestamp."""
+        self.last_login_at = datetime.now(timezone.utc)
 
 
-@router.post("/register/", response_model=UserResponse, tags=["Login and Registration"])
-async def register(user_data: UserCreate, session: AsyncSession = Depends(get_db), email_service: EmailService = Depends(get_email_service)):
-    user = await UserService.register_user(session, user_data.model_dump(), email_service)
-    if user:
-        return user
-    raise HTTPException(status_code=400, detail="Email already exists")
+class RetentionAnalytics(Base):
+    """
+    Tracks user retention analytics.
+    """
+    __tablename__ = "retention_analytics"
 
-@router.post("/login/", response_model=TokenResponse, tags=["Login and Registration"])
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_db)):
-    if await UserService.is_account_locked(session, form_data.username):
-        raise HTTPException(status_code=400, detail="Account locked due to too many failed login attempts.")
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    timestamp: Mapped[datetime] = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
+    total_anonymous_users: Mapped[int] = Column(Integer, default=0)
+    total_authenticated_users: Mapped[int] = Column(Integer, default=0)
+    conversion_rate: Mapped[str] = Column(String(10), nullable=False)  # Example: "20%"
+    inactive_users_24hr: Mapped[int] = Column(Integer, default=0)
 
-    user = await UserService.login_user(session, form_data.username, form_data.password)
-    if user:
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-
-        access_token = create_access_token(
-            data={"sub": user.email, "role": str(user.role.name)},
-            expires_delta=access_token_expires
+    def __repr__(self):
+        """Provides a readable representation of analytics data."""
+        return (
+            f"<RetentionAnalytics {self.timestamp}: "
+            f"Anonymous={self.total_anonymous_users}, "
+            f"Authenticated={self.total_authenticated_users}, "
+            f"Conversion={self.conversion_rate}>"
         )
-
-        return {"access_token": access_token, "token_type": "bearer"}
-    raise HTTPException(status_code=401, detail="Incorrect email or password.")
-
-@router.post("/login/", include_in_schema=False, response_model=TokenResponse, tags=["Login and Registration"])
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_db)):
-    if await UserService.is_account_locked(session, form_data.username):
-        raise HTTPException(status_code=400, detail="Account locked due to too many failed login attempts.")
-
-    user = await UserService.login_user(session, form_data.username, form_data.password)
-    if user:
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-
-        access_token = create_access_token(
-            data={"sub": user.email, "role": str(user.role.name)},
-            expires_delta=access_token_expires
-        )
-
-        return {"access_token": access_token, "token_type": "bearer"}
-    raise HTTPException(status_code=401, detail="Incorrect email or password.")
-
-
-@router.get("/verify-email/{user_id}/{token}", status_code=status.HTTP_200_OK, name="verify_email", tags=["Login and Registration"])
-async def verify_email(user_id: UUID, token: str, db: AsyncSession = Depends(get_db), email_service: EmailService = Depends(get_email_service)):
-    """
-    Verify user's email with a provided token.
-    
-    - **user_id**: UUID of the user to verify.
-    - **token**: Verification token sent to the user's email.
-    """
-    if await UserService.verify_email_with_token(db, user_id, token):
-        return {"message": "Email verified successfully"}
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token")
